@@ -1,6 +1,6 @@
 import { CompressedPointCloud, PointCloud } from "./Schemas";
 import CloudiniModule from "./cloudini_wasm_single.js";
-import type { CloudiniWasmModule } from "./cloudini_wasm";
+import type { CloudiniWasmModule } from "./cloudini_wasm_single";
 
 let wasmModule: CloudiniWasmModule | null = null;
 let wasmLoadingPromise: Promise<void> | null = null;
@@ -49,7 +49,6 @@ export const convertPointCloudWasm = (cloud: CompressedPointCloud): PointCloud =
   try {
 
     const bufferSize = data.byteLength;
-    console.info("Decompressing point cloud buffer of size:", bufferSize);
 
     // Check if data is too large for WASM memory
     if (wasmModule.HEAPU8) {

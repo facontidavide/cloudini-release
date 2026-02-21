@@ -16,8 +16,14 @@ jobs:
         with:
           required-ros-distributions: humble
 
+      # Install missing Python packages for ament test runner
+      - name: Install ament Python packages
+        run: sudo apt-get install -y ros-humble-ament-cmake-test
+
       # Run ROS CI
       - uses: ros-tooling/action-ros-ci@v0.4
         with:
-          package-name: cloudini_ros
+          package-name: |
+            cloudini_lib
+            cloudini_ros
           target-ros2-distro: humble
