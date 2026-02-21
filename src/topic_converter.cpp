@@ -19,6 +19,7 @@
 #include <rclcpp/generic_publisher.hpp>
 #include <rclcpp/generic_subscription.hpp>
 #include <rclcpp/rclcpp.hpp>
+#include <rclcpp_components/register_node_macro.hpp>
 #include <rosidl_typesupport_cpp/message_type_support.hpp>
 #include <sensor_msgs/msg/point_cloud2.hpp>
 
@@ -100,7 +101,7 @@ rclcpp::QoS adapt_request_to_offers(
 //-----------------------------------------------------
 
 CloudiniPointcloudConverter::CloudiniPointcloudConverter(const rclcpp::NodeOptions& options)
-    : rclcpp::Node("cloudini_pointcloud_converter", options) {
+    : rclcpp::Node("cloudini_pointcloud_converter", rclcpp::NodeOptions(options).use_intra_process_comms(true)) {
   // Declare parameters for input and output topics
   this->declare_parameter<bool>("compressing", true);
   this->declare_parameter<std::string>("topic_input", "/points");
@@ -165,8 +166,8 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   auto pc_info = cloudini_ros::getDeserializedPointCloudMessage(raw_dds_msg);
 
   if (compressing_) {
-    const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     cloudini_ros::applyResolutionProfile(cloudini_ros::ResolutionProfile{}, pc_info.fields, resolution_);
+    const auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output_raw_message_);
   } else {
     cloudini_ros::convertCompressedCloudToPointCloud2(pc_info, output_raw_message_);
@@ -190,13 +191,4 @@ void CloudiniPointcloudConverter::callback(std::shared_ptr<rclcpp::SerializedMes
   count++;
 }
 
-int main(int argc, char** argv) {
-  // Initialize ROS2 node
-  rclcpp::init(argc, argv);
-  rclcpp::NodeOptions options;
-  options.use_intra_process_comms(true);
-  auto node = std::make_shared<CloudiniPointcloudConverter>(options);
-  rclcpp::spin(node);
-  rclcpp::shutdown();
-  return 0;
-}
+RCLCPP_COMPONENTS_REGISTER_NODE(CloudiniPointcloudConverter)
