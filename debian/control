@@ -1,0 +1,12 @@
+Source: ros-rolling-cloudini-lib
+Section: misc
+Priority: optional
+Maintainer: Davide Faconti <davide.faconti@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), liblz4-dev, libpcl-common1.13, libpcl-io1.13, libzstd-dev, lz4, ros-rolling-ament-cmake, ros-rolling-ament-cmake-gtest <!nocheck>, ros-rolling-mcap-vendor, ros-rolling-ros-workspace
+Homepage: 
+Standards-Version: 3.9.2
+
+Package: ros-rolling-cloudini-lib
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, liblz4-dev, libpcl-common1.13, libpcl-io1.13, libzstd-dev, lz4, ros-rolling-mcap-vendor, ros-rolling-ros-workspace
+Description: Main library of Cloudini, the pointcloud compression library
