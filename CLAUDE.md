@@ -151,12 +151,29 @@ ros2 run cloudini_ros cloudini_topic_converter --ros-args \
   -p topic_output:=/points/decompressed
 ```
 
+**Direct Compression Publisher** (`cloudini_ros/test/test_direct_publisher.cpp`):
+```bash
+ros2 run cloudini_ros test_direct_publisher --ros-args \
+  -p input_topic:=/points \
+  -p output_topic:=/points/compressed \
+  -p resolution:=0.001
+```
+- Compresses PointCloud2 directly using `SerializeCompressedPointCloud2`
+- Publishes as serialized `CompressedPointCloud2` via generic publisher
+- No topic_converter node needed
+
 ### Benchmarking
 
 **MCAP Rosbag Conversion**:
 ```bash
-# DATA folder may contain .mcap files
-./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/<name_of_the_file>
+# Convert a ROS2 bag directory (creates <bag_dir>_encoded/ with .mcap + metadata.yaml)
+./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/my_bag/
+
+# Convert a bare .mcap file (if sibling metadata.yaml exists, it is also transformed)
+./build_release/tools/cloudini_rosbag_converter -c -y -f DATA/my_bag/my_bag_0.mcap
+
+# Decode back to PointCloud2
+./build_release/tools/cloudini_rosbag_converter -d -y -f DATA/my_bag_encoded/
 ```
 
 ### Debugging with ROS2 CLI
@@ -274,6 +291,32 @@ cloudini_ros::applyResolutionProfile(
 // Convert with custom encoding
 std::vector<uint8_t> output;
 cloudini_ros::convertPointCloud2ToCompressedCloud(pc_info, encoding_info, output);
+```
+
+### Direct Compression (Without Topic Converter)
+
+```cpp
+#include <cloudini_ros/conversion_utils.hpp>
+#include <rclcpp/rclcpp.hpp>
+
+// Setup: create a generic publisher for CompressedPointCloud2
+auto publisher = node->create_generic_publisher(
+    "/points/compressed",
+    "point_cloud_interfaces/msg/CompressedPointCloud2",
+    rclcpp::QoS(10));
+
+// Compress a PointCloud2 message
+std::vector<uint8_t> buffer;
+Cloudini::SerializeCompressedPointCloud2(pcd_msg, 0.001, buffer);
+
+// Publish using zero-copy pointer swap
+rclcpp::SerializedMessage ser_msg;
+ser_msg.get_rcl_serialized_message().buffer = buffer.data();
+ser_msg.get_rcl_serialized_message().buffer_length = buffer.size();
+publisher->publish(ser_msg);
+// NOTE: null out ser_msg buffer before destruction to prevent double-free
+ser_msg.get_rcl_serialized_message().buffer = nullptr;
+ser_msg.get_rcl_serialized_message().buffer_length = 0;
 ```
 
 ## Performance Optimization Patterns
@@ -460,7 +503,7 @@ Use correct type string:
 
 ## Tools
 
-- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds
+- **cloudini_rosbag_converter**: Convert MCAP rosbags between compressed/uncompressed pointclouds. Accepts bag directories or bare `.mcap` files; generates a transformed `metadata.yaml` when one is present
 - **mcap_cutter**: Extract portions of MCAP files
 - **pcd_benchmark**: Benchmark compression on PCD files
 - **run_encoder.sh**: Batch processing script for test data
@@ -503,6 +546,7 @@ src/
 
 test/
 ├── test_cloudini_subscriber.cpp # Direct CloudiniSubscriberPCL usage example
+├── test_direct_publisher.cpp    # Direct compression publisher example
 ├── test_plugin_publisher.cpp    # point_cloud_transport publisher example
 └── test_plugin_subscriber.cpp   # point_cloud_transport subscriber example
 ```
