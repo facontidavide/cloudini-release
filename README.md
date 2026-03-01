@@ -1,155 +1,155 @@
-# ROS2 specific libraries and utilities
+[![Ubuntu](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ubuntu-build.yaml)
+[![ROS2 Humble](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-humble.yaml)
+[![ROS2 Jazzy](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml/badge.svg)](https://github.com/facontidavide/cloudini/actions/workflows/ros-jazzy.yaml)
 
-## cloudini_topic_converter
+![Cloudini](logo.png)
 
-A simple node that subscribes to one of these two topic types and publishes the other:
+**Cloudini** (pronounced with Italian accent) is a pointcloud compression
+library.
 
-- `sensor_msgs/msg/PointCloud2`
-- `point_cloud_interfaces/msg/CompressedPointCloud2`
+Its main focus is speed, but it still achieves very good compression ratios.
 
-It is genrally **more efficient** than using the **point_cloud_transport** because the latter would:
+Its main use cases are:
 
-1. Receive a serialized DDS message.
-2. Convert that to **CompressedPointCloud2**.
-3. Do the actual decompression.
-4. Convert **PointCloud2** to a serialized DDS message.
+- To improve the storage of datasets containing pointcloud data (being a notable example **rosbags**).
 
-Instead, we work directly with **raw** serialized messages, bypassing the ROS type system, skipping steps 2 and 4 in the list above.
+- Decrease the bandwidth used when streaming pointclouds over a network.
 
-### Parameters
+It works seamlessly with [PCL](https://pointclouds.org/) and
+[ROS](https://www.ros.org/), but the main library can be compiled and used independently, if needed.
 
-- `topic_input` (string): name of the topic to subscribe to.
-- `topic_output` (string): name of the topic to publish into.
-- `compressing`(bool): true if you are subscribing to a regular pointcloud2, and you want to compress it.
-  False if you are subscribing to a compressed topic and you want to decompress it.
-- `resolution` (double): resolution of floating point fields in meters. Default: 0.001
+# What to expect
 
-### Example usage
+The compression ratio is hard to predict because it depends on the way the original data is encoded.
 
-To convert a regular `sensor_msgs/msg/PointCloud2` to a compressed one:
+For example, ROS pointcloud messages are extremely inefficient, because
+they include some "padding" in the message that, in extreme cases, may reach up to 50%.
 
-```
-ros2 run cloudini_ros cloudini_topic_converter --ros-args \
-    -p compressing:=true  \
-    -p topic_input:=/points  \
-    -p topic_output:=/points/compressed
-```
+(Yes, you heard correctly, almost 50% of that 10 Gb rosbag is useless padding).
 
-To decompress that topic back in to its original form:
+But, in general, you may expect considerably **better compression and faster encoding/decoding**  than ZSTD or LZ4 alone.
 
-```
-ros2 run cloudini_ros cloudini_topic_converter --ros-args \
-    -p compressing:=false  \
-    -p topic_input:=/points/compressed  \
-    -p topic_output:=/points/decompressed
-```
+These are some examples using real-world data from LiDARs.
 
-### Composable Node (Component Container)
+Below, you can see the compression ratio (normalized to original pointcloud size)
 
-The topic converter is also available as a composable node, allowing it to be loaded
-into a component container for reduced overhead when running multiple nodes in the
-same process.
+![compression_ratio.png](compression_ratio.png)
 
-```bash
-# Start a component container
-ros2 run rclcpp_components component_container
+Interestingly, Cloudini has a negative overhead, i.e. Cloudini + ZSTD is **faster** than ZSTD alone.
 
-# Load the topic converter as a component
-ros2 component load /ComponentManager cloudini_ros CloudiniPointcloudConverter \
-  -p compressing:=true \
-  -p topic_input:=/points \
-  -p topic_output:=/points/compressed \
-  -p resolution:=0.001
-```
+![compression_time.png](compression_time.png)
 
-Or via launch file:
+If you are a ROS user, you can test the compression ratio and speed yourself,
+running the application `rosbag_benchmark` on any rosbag containing a `sensor_msgs::msg::PointCloud2` topic.
 
-```python
-from launch_ros.actions import ComposableNodeContainer, LoadComposableNodes
-from launch_ros.descriptions import ComposableNode
+# How to test it yourself
 
-container = ComposableNodeContainer(
-    name='cloudini_container',
-    namespace='',
-    package='rclcpp_components',
-    executable='component_container',
-)
+There is a pre-compiled Linux [AppImage](https://appimage.org/) that can be downloaded in the
+[release page](https://github.com/facontidavide/cloudini/releases/latest)
 
-converter = LoadComposableNodes(
-    target_container='cloudini_container',
-    composable_node_descriptions=[
-        ComposableNode(
-            package='cloudini_ros',
-            plugin='CloudiniPointcloudConverter',
-            parameters=[{
-                'compressing': True,
-                'topic_input': '/points',
-                'topic_output': '/points/compressed',
-                'resolution': 0.001,
-            }],
-        ),
-    ],
-)
-```
+Alternatively, you can test the obtainable compression ratio in your browser here: https://cloudini.netlify.app/
 
-## cloudini_rosbag_converter
+NOTE: your data will **not** be uploaded to the cloud. The application runs 100% inside your browser.
 
-A command line tool that, given a rosbag (limited to MCAP format), converts
- all `sensor_msgs/msg/PointCloud2` topics into compressed `point_cloud_interfaces/msg/CompressedPointCloud2` of vice-versa.
+[![cloudini_web.png](cloudini_web.png)](https://cloudini.netlify.app/)
 
-Encoding/decoding is faster than general-purpose compression algorithms and achieves a better compression ratio at 1mm resolution.
+# How it works
 
-Interestingly, it can be compiled **without** ROS installed in your system!
+The algorithm contains two steps:
 
-Example usage: round trip compression / decompression;
+1. Encoding the pointcloud, channel by channel.
+2. Compression using either [LZ4](https://github.com/lz4/lz4) or [ZSTD](https://github.com/facebook/zstd).
+
+The encoding is lossy for floating point channels (typically the X, Y, Z channels)
+and lossless for RGBA and integer channels.
+
+Now, I know that when you read the word "lossy" you may think about grainy JPEGS images. **Don't**.
+
+The encoder applies a quantization using a resolution provided by the user.
+
+Typical LiDARs have an accuracy/noise in the order of +/- 1 cm.
+Therefore, using a resolution of **1 mm** (+/- 0.5 mm max quantization error) is usually a very conservative option.
+
+# Compile instructions
+
+Some dependencies are downloaded automatically using [CPM](https://github.com/cpm-cmake/CPM.cmake).
+To avoid downloading them again when you rebuild your project, I suggest setting **CPM_SOURCE_CACHE** as described [here](https://github.com/cpm-cmake/CPM.cmake).
+
+To build the main library (`cloudini_lib`)
 
 ```
-# Use option -c for compression
-cloudini_rosbag_converter -f original_rosbag.mcap -o compressed_rosbag.mcap -c
-
-# Use option -d for decompression
-cloudini_rosbag_converter -f compressed_rosbag.mcap -o restored_rosbag.mcap -d
+cmake -B build/release -S cloudini_lib -DCMAKE_BUILD_TYPE=Release
+cmake --build build/release --parallel
 ```
 
-Note that the "restored_rosbag.mcap" might be smaller than the original one, because the chunk-based ZSTD compression provided
-by MCAP is enabled.
+## ROS compilation
 
+To compile it with ROS, just pull this repo into your **ws/src** folder and execute `colcon build` as usual.
 
-# How to read directly a CompressedPointCloud2 from your application
+# ROS specific utilities
 
-## Using the point_cloud_transport plugin
+For more information, see the [cloudini_ros/README.md](cloudini_ros/README.md)
 
-You can see a practical example in [test/test_plugin_publisher.cpp](test/test_plugin_publisher.cpp) and [test/test_plugin_subscriber.cpp](test/test_plugin_subscriber.cpp)
+- **point_cloud_transport plugins**: see [point_cloud_transport plugins](https://github.com/ros-perception/point_cloud_transport_plugins) for reference about how they are used.
 
-## Use CloudiniSubscriberPCL (when using PCL)
+- **cloudini_topic_converter**: a node that subscribes to a compressed `point_cloud_interfaces/CompressedPointCloud2` and publishes a `sensor_msgs/PointCloud2`.
 
-A special subscriber is provided to subscribe to a topic with type `point_cloud_interfaces/msg/CompressedPointCloud2` and convert
-its content to `pcl::PointCloud2` automatically.
+- **cloudini_rosbag_converter**: a command line tool that, given a rosbag (limited to MCAP format), converts all `sensor_msgs/PointCloud2` topics into compressed `point_cloud_interfaces/CompressedPointCloud2` of vice-versa.
 
-See example [test/test_cloudini_subscriber.cpp](test/test_cloudini_subscriber.cpp)
+## Compiling the WASM module
 
-Alternaively, you can use the code as a template to see how convertion is implemented and crate your own version.
-
-Example:
-
-1. Publish a regular pointcloud from a rosbag:
+Cloduni in your web browser! The following instructions assume that you have
+[Emscripten installed](https://emscripten.org/docs/getting_started/downloads.html).
 
 ```
-# Assuming that this rosbag contains a topic called "/points"
-ros2 bag play -l my_rosbag/
+emcmake cmake -B build/wasm -S ./cloudini_lib -DCLOUDINI_BUILD_TOOLS=OFF
+cd build/wasm
+emmake make
 ```
 
-2. Run **topic_converter** as mentioned above to create a topic called "/points/compressed":
+To test the **cloudini_web** move back to the `cloudini`main folder and do:
 
 ```
-ros2 run cloudini_ros cloudini_topic_converter --ros-args \
-    -p compressing:=true  \
-    -p topic_input:=/points  \
-    -p topic_output:=/points/compressed
+cp -r cloudini_web build/web_deploy
+cp build/wasm/cloudini_wasm.js build/web_deploy/public/
+cd build/web_deploy
+npm install
+npm run dev
 ```
 
-3. Subscribe using **test_cloudini_subscriber**:
+# Frequently Asked Questions
 
-```
-ros2 run cloudini_ros test_cloudini_subscriber --ros-args -p topic:=/points/compressed
-```
+### I want to record "raw data". Since Cloudini is "lossy", I think I should not use it...
+
+I disagree: you are working with noisy data in the first place.
+
+Furthermore, I am pretty sure that your pointcloud processing algorithm is applying some sort of Voxel-based downsampling larger
+than the quantization applied by this library.
+
+If you keep the quantization error low enough, it will not affect your results in any meaningful way.
+
+### So, which resolution do you recommend?
+
+Look at the specifications of your sensor and use that value as a reference.
+
+Considering that LiDARs accuracy is usually in the order of **+/- 1 cm** and that the resolution used in Cloudini is in meters:
+
+- If the goal of the recorded pointcloud is to do visualization, use a resolution of **0.01 (1 cm)**.
+- If you want to record "raw data", a resolution of **0.001 (1 mm)** is the perfect default value.
+- If you are stubborn and you don't believe a single word I said, you can go as low as **0.0001 (100 microns)** and still
+  see significant compression. But you are being paranoid...
+
+### How does it perform, compared to Draco?
+
+[Google Draco](https://github.com/google/draco) has two main encoding methods: SEQUENTIAL and KD_TREE.
+
+The latter could achieve excellent compression ratios, but it is very sloooow and it doesn't preserve the original order
+of the points in the point cloud.
+
+Compared with the Draco sequential mode, Cloudini achieves approximately the same compression, but is considerably faster 
+(about 3-4 times faster encoding).
+
+### Does the decoder need to know the parameters used while encoding?
+
+No, that information is stored in the header of the compressed data, and the decoder will automatically select the right
+decompression algorithm.
