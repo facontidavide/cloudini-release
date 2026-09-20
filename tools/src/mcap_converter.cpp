@@ -100,7 +100,9 @@ void McapConverter::duplicateSchemasAndChannels(
   for (const auto& channel_id : ordered_channels_id) {
     const auto channel_ptr = old_channels.at(channel_id);
     auto new_schema_id = old_to_new_schema_id_.at(channel_ptr->schemaId);
-    mcap::Channel new_channel(channel_ptr->topic, channel_ptr->messageEncoding, new_schema_id);
+    // Preserve the channel metadata (e.g. ROS2 offered_qos_profiles); the mcap::Channel
+    // constructor defaults metadata to empty, which would silently drop the QoS profiles.
+    mcap::Channel new_channel(channel_ptr->topic, channel_ptr->messageEncoding, new_schema_id, channel_ptr->metadata);
     writer.addChannel(new_channel);
     old_to_new_channel_id_.insert({channel_ptr->id, new_channel.id});
   }
@@ -139,7 +141,7 @@ mcap::Compression toMcapCompression(Cloudini::CompressionOption compression) {
 //------------------------------------------------------
 void McapConverter::encodePointClouds(
     std::filesystem::path file_out, std::optional<float> default_resolution,
-    Cloudini::CompressionOption mcap_writer_compression) {
+    Cloudini::CompressionOption mcap_writer_compression, bool viz_lossy) {
   if (!reader_) {
     throw std::runtime_error("McapReader is not initialized. Call open() first.");
   }
@@ -187,6 +189,14 @@ void McapConverter::encodePointClouds(
     // Apply the profile to the encoding info. removing fields if resolution is 0
     // Remove first all fields that have resolution 0.0 in the profile
     cloudini_ros::applyResolutionProfile(profile_resolutions_, pc_info.fields, default_resolution);
+
+    // Visualization-oriented lossy preprocessing: drop NaN, voxel-dedupe,
+    // 1µs FLOAT64. Applied after applyResolutionProfile so xyz fields have
+    // their resolutions set (used for the dedup voxel size). Modifies
+    // pc_info in place; sets pc_info.owned_data with the new bytes.
+    if (viz_lossy) {
+      cloudini_ros::applyVizLossyPreprocessing(pc_info);
+    }
 
     auto encoding_info = cloudini_ros::toEncodingInfo(pc_info);
     // no need to do ZSTD compression twice
