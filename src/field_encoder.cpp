@@ -40,11 +40,12 @@ FieldEncoderFloatN_Lossy::FieldEncoderFloatN_Lossy(const std::vector<FieldData>&
 }
 
 size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, BufferView& output) {
-  const Vector4f vect_real(
-      *(reinterpret_cast<const float*>(point_view.data() + offset_[0])),
-      *(reinterpret_cast<const float*>(point_view.data() + offset_[1])),
-      *(reinterpret_cast<const float*>(point_view.data() + offset_[2])),
-      *(reinterpret_cast<const float*>(point_view.data() + offset_[3])));
+  // memcpy: fields of packed point layouts (e.g. point_step 22 or 26) are not 4-byte aligned
+  float values[4];
+  for (size_t i = 0; i < 4; ++i) {
+    memcpy(&values[i], point_view.data() + offset_[i], sizeof(float));
+  }
+  const Vector4f vect_real(values[0], values[1], values[2], values[3]);
 
   const Vector4f normalized_vect = vect_real * multiplier_;
   const Vector4i vect_int = cast_vector4f_to_vector4i(normalized_vect);
@@ -59,7 +60,7 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
   const int nan_bits = _mm_movemask_ps(nan_mask);
 
   // Early path for no NaNs (most common case)
-  if (__builtin_expect(nan_bits == 0, 1)) {
+  if (nan_bits == 0) [[likely]] {
     ptr_out += encodeVarint64(delta[0], ptr_out);
     ptr_out += encodeVarint64(delta[1], ptr_out);
     if (fields_count_ > 2) {
@@ -76,7 +77,7 @@ size_t FieldEncoderFloatN_Lossy::encode(const ConstBufferView& point_view, Buffe
 
   // Fallback path (with NaNs or no SIMD)
   for (size_t i = 0; i < fields_count_; ++i) {
-    if (__builtin_expect(std::isnan(vect_real[i]), 0)) {
+    if (std::isnan(vect_real[i])) [[unlikely]] {
       *ptr_out = 0;
       prev_vect_[i] = 0;
       ptr_out++;

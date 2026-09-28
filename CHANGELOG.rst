@@ -2,6 +2,194 @@
 Changelog for package cloudini_lib
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.0 (2026-09-28)
+------------------
+* feat: V6 wire format, now the default (`#150 <https://github.com/facontidavide/cloudini/issues/150>`_)
+
+  * V6 codes x, y, z as residual streams against a predictor chosen per chunk (previous
+    point, point K back, LOCO-I median of the two, second order), skips no-return points
+    with a validity mask, and gives every other float field its own stream. With ZSTD,
+    the median output is 13% smaller than V5 on 13 LiDAR/depth datasets.
+  * Encoders write V6 by default. Decoders from 1.3.1 and earlier cannot read it: select
+    version 5 for them (``--encoding-version 5``, ``encoding_version:=5``,
+    ``cloudini_encoding_version: 5``, or ``EncodingInfo::version = 5``).
+  * Resolutions are refined to the data by default (``RefineResolutionsToData``):
+    integer-valued floats such as intensity are stored at resolution 1, with the same
+    error bound. On a 2.8 GB warehouse bag, V6 with refinement is 24% smaller than 1.3.1
+    and decodes 1.75x faster. ``cloudini_rosbag_converter --no-refine`` turns it off.
+  * V5: adaptive integer sections sized for the stage-2 compressor (same format).
+  * Faster decode of V4, V5 and V6 (same bytes on the wire): up to +59% for V4 clouds
+    with integer fields.
+  * ``PointcloudEncoderCache`` keeps one encoder per stream (rosbag converter, topic
+    converter, point_cloud_transport plugin, ``SerializeCompressedPointCloud2``).
+  * Fixes: heap overflow on crafted V5 RLE runs; writes past the output for fields
+    beyond point_step; misaligned loads of packed fields; signed overflow on corrupted
+    input; encoding versions no decoder reads are rejected by the encoder.
+  * Tools: ``mcap_codec_benchmark`` V6 and V6-viz modes, ``--profile`` and
+    ``--no-refine``; ``cloudini_rosbag_converter --no-refine``, profile files read whole.
+* fix: a cloud from a newer Cloudini fails with an error that asks to update Cloudini
+  (library, ROS package or Foxglove extension), instead of "Unsupported encoding version"
+* fix: keep packed rgb/rgba FLOAT32 fields lossless (`#135 <https://github.com/facontidavide/cloudini/issues/135>`_) (`#146 <https://github.com/facontidavide/cloudini/issues/146>`_)
+  Some ROS drivers pack RGB(A) as uint32 bits reinterpreted into a FLOAT32
+  field named "rgb"/"rgba". Every path that assigned a default resolution
+  to FLOAT32 fields quantized these bits, destroying the colors.
+  Add Cloudini::isPackedColorField() / defaultFieldResolution() in
+  basic_types.hpp and use them in applyResolutionProfile, the PCL
+  ConvertToEncodingInfo, the WASM encode helpers and the ROS
+  ConvertToEncodingInfo. An explicit resolution profile entry still wins.
+  Decoding needs no change: resolution is stored in the header.
+  Claude-Session: https://claude.ai/code/session_01EAorWbhzp56yxAVUF7M3Dd
+  Co-authored-by: Claude <noreply@anthropic.com>
+* fix: parse/format header resolution locale-independently (`#123 <https://github.com/facontidavide/cloudini/issues/123>`_) (`#145 <https://github.com/facontidavide/cloudini/issues/145>`_)
+  The YAML header resolution was parsed with std::stof, which honors the C
+  locale: with a ',' decimal separator (e.g. de_DE.UTF-8) "0.001" was read
+  as 0 and FieldDecoderFloatN_Lossy threw during decoding. The writer used
+  an ostringstream, which follows the global C++ locale (std::locale::global)
+  and could emit "0,001" or grouped integers such as "1.234.567".
+  - EncodingInfoToYAML: imbue the stream with std::locale::classic() and
+  write resolutions with the shortest precision that round-trips exactly.
+  - EncodingInfoFromYAML: parse resolution with a classic-locale stream.
+  - YAML::Node::parseScalar: imbue std::locale::classic().
+  Streams are used instead of std::from_chars/to_chars for float because
+  those are not available on all supported standard libraries (older libc++).
+  Add regression tests that switch to a comma-decimal locale (C locale only,
+  and C + global C++ locale), skipped if no such locale is installed.
+  Claude-Session: https://claude.ai/code/session_01EAorWbhzp56yxAVUF7M3Dd
+  Co-authored-by: Claude <noreply@anthropic.com>
+* Contributors: Davide Faconti
+
+1.3.1 (2026-09-20)
+------------------
+* build: make cloudini_lib embeddable with add_subdirectory / FetchContent (`#142 <https://github.com/facontidavide/cloudini/issues/142>`_)
+  Reuses zstd/lz4 targets defined by a parent project, ignores an inherited ament_cmake,
+  and keeps the build type, tests, tools, benchmarks, PCL and install rules out of the
+  parent. New options CLOUDINI_WITH_PCL and CLOUDINI_INSTALL; cloudini::cloudini_lib is
+  always defined.
+* fix: link Threads::Threads (static consumers failed with undefined pthread_create)
+* fix: reject inconsistent point clouds; make ros_message_definitions.hpp includable twice (`#141 <https://github.com/facontidavide/cloudini/issues/141>`_)
+* The CMake project version now matches package.xml (it was left at 1.2.4 in 1.3.0)
+* Contributors: Davide Faconti
+
+1.3.0 (2026-09-20)
+------------------
+* feat(packaging): conda/pixi package for prefix.dev + conda-forge (`#133 <https://github.com/facontidavide/cloudini/issues/133>`_)
+  * feat(packaging): add conda/pixi package (prefix.dev + conda-forge)
+  Ship cloudini as a conda package (shared library + headers + CMake package
+  config + cloudini_rosbag_converter CLI), buildable with rattler-build and
+  publishable to prefix.dev and conda-forge.
+  Library/CMake changes to make it installable outside ament:
+  - install(EXPORT) + generated cloudini_libConfig.cmake for standalone builds,
+  so downstream can find_package(cloudini_lib) and link cloudini::cloudini_lib
+  - $ORIGIN/../lib install RPATH so installed executables locate the lib
+  - prefer shared zstd/lz4 variants when the library itself is shared
+  - find_or_download_zstd.cmake: accept conda's zstd::libzstd_shared / zstd::libzstd
+  (conda-forge ships no static zstd) instead of vendoring a copy
+  - find_or_download_mcap.cmake: -DMCAP_INCLUDE_DIR offline hook (no-network builds)
+  - pin mcap_converter STATIC so the CLI stays self-contained under BUILD_SHARED_LIBS=ON
+  conda/recipe.yaml is hermetic (no network at build): links conda zstd/lz4-c,
+  uses conda cxxopts, and consumes a pre-fetched mcap source. Same recipe serves
+  prefix.dev and conda-forge/staged-recipes. conda/RELEASING.md documents the
+  release + publish workflow.
+  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  * release: pin cloudini 1.2.4 source sha256
+  Co-Authored-By: Claude Opus 4.8 <noreply@anthropic.com>
+  * fix(cmake): export static compression dependencies and test installed consumers
+  * docs(conda): update release validation and publishing guidance
+  * ci: test Pixi packages and replace Kilted with Lyrical
+  ---------
+  Co-authored-by: Claude Opus 4.8 <noreply@anthropic.com>
+* Regression test for decoder buffer sizing (`#139 <https://github.com/facontidavide/cloudini/issues/139>`_) + clang-format pass (`#140 <https://github.com/facontidavide/cloudini/issues/140>`_)
+  * test: regression for decoder buffer sizing with expanding stage-1 encoding
+  Single-chunk lossless cloud of incompressible FLOAT64/UINT32 data, whose
+  stage-1 encoding exceeds width*height*point_step. Fails with "LZ4
+  decompression failed" before 9765a54 (`#139 <https://github.com/facontidavide/cloudini/issues/139>`_).
+  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  * chore: apply clang-format repo-wide, skip vendored contrib in the hook
+  Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>
+  ---------
+  Co-authored-by: Claude Fable 5.1 <noreply@anthropic.com>
+* fix(PointcloudDecoder): improve max decompressed size calculation for chunk decoding
+* Fix license tags in package.xml
+  According to ros_license_toolkit[^1] license tags should be in SPDX
+  list of licenses. In case of claudini_ros, the license version was
+  missing and in case of claudini_lib, the license name was not "exact".
+  This commit changes the license tags to use SPDX license identifiers.
+  Note that it doesn't fix the failures reported in claudini_lib in the
+  output below:
+  [cloudini_ros]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache.
+  LicensesInCodeCheck
+  WARNING For the following files, please change the License Tag in the package file to SPDX format:
+  'include/cloudini_plugin/cloudini_publisher_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_plugin/cloudini_subscriber_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/cloudini_subscriber_pcl.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/conversion_utils.hpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_publisher_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_pcl.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/conversion_utils.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/plugin_manifest.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/topic_converter.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.hpp' is of Apache-2.0 but its Tag is Apache.
+  'test/rosbag_benchmark.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_cloudini_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_direct_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  --------------------
+  [cloudini_lib]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache 2.0']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache 2.0'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache 2.0': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache 2.0.
+  LicensesInCodeCheck
+  FAILURE
+  The following files contain licenses that are not covered by any license tag:
+  'benchmarks/pcd_benchmark.cpp': ['MIT']
+  'cmake/CPM.cmake': ['MIT']
+  'include/cloudini_lib/ros_message_definitions.hpp': ['BSD-3-Clause']
+  'include/cloudini_lib/contrib/ankerl/stl.h': ['MIT']
+  'include/cloudini_lib/contrib/ankerl/unordered_dense.h': ['MIT']
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  [^1]: https://github.com/boschresearch/ros_license_toolkit
+* Preserve the channel metadata
+* Contributors: Davide Faconti, Guillaume Doisy, Michal Sojka, Tony Najjar
+
+1.2.2 (2026-06-04)
+------------------
+* fix(field_encoder): use C++20 [[likely]]/[[unlikely]] instead of __builtin_expect (enables MSVC)
+
+1.2.1 (2026-05-20)
+------------------
+* build(cmake): honor BUILD_SHARED_LIBS for standalone (non-ament) builds
+
+1.2.0 (2026-05-05)
+------------------
+* fix(cmake): vendor ankerl::unordered_dense to fix ROS buildfarm
+* chore: clean up v5 codec review notes
+* fix: harden cloudini decode error handling
+* feat: add cloudini v5 adaptive codec
+* Contributors: Davide Faconti
+
 1.1.0 (2026-04-20)
 ------------------
 * feat(gorilla): Gorilla bit-packed XOR for FLOAT64 lossless (backward compatible) (`#93 <https://github.com/facontidavide/cloudini/issues/93>`_)
