@@ -90,8 +90,23 @@ int main(int argc, char** argv) {
       ("c,compress", "Convert PointCloud2 to CompressedPointCloud2")  //
       ("d,decode", "Convert CompressedPointCloud2 to PointCloud2")    //
       ("s,stats", "Print compression statistics")                     //
+      ("viz",
+       "Visualization-oriented lossy preprocessing (compression only). Bundles three "
+       "operations applied per message before encoding: drop NaN points, voxel-dedupe "
+       "at the xyz resolution (first occurrence wins; order preserved), and quantize "
+       "FLOAT64 fields without a resolution to 1us (typically per-point timestamps). "
+       "Roughly halves output size on real LIDAR with stage-2 ZSTD. Lossy on NaN "
+       "positions, mm-coincident duplicates, and sub-microsecond FLOAT64 precision.")  //
       ("m,method", "Compression method to use when writing data back to mcap ('zstd', 'none')",
-       cxxopts::value<std::string>()->default_value("zstd"));
+       cxxopts::value<std::string>()->default_value("zstd"))  //
+      ("encoding-version",
+       "Wire version of the encoded clouds (compression only): 4, 5 or 6 (default). Use 5 for readers on "
+       "cloudini 1.3.1 or earlier, which cannot decode version 6.",
+       cxxopts::value<int>()->default_value(std::to_string(Cloudini::kEncodingVersion)))  //
+      ("no-refine",
+       "Do not refine the resolutions to the data of each cloud (compression only). By default a float field "
+       "whose values lie on a coarser grid, e.g. an integer-valued intensity, is stored at that coarser "
+       "resolution: smaller and faster, with the same error bound.");
 
   auto parse_result = options.parse(argc, argv);
 
@@ -132,6 +147,7 @@ int main(int argc, char** argv) {
   const double resolution = parse_result["resolution"].as<double>();
   const bool encode = parse_result.count("compress");
   const bool decode = parse_result.count("decode");
+  const bool viz_lossy = parse_result.count("viz") > 0;
 
   if (encode && decode) {
     std::cerr << "Error: Cannot specify both --compress and --decode options." << std::endl;
@@ -139,6 +155,10 @@ int main(int argc, char** argv) {
   }
   if (!encode && !decode) {
     std::cerr << "Error: Must specify either --compress or --decode option." << std::endl;
+    return 1;
+  }
+  if (viz_lossy && !encode) {
+    std::cerr << "Error: --viz can only be used with --compress." << std::endl;
     return 1;
   }
 
@@ -231,6 +251,10 @@ int main(int argc, char** argv) {
     std::cerr << "The option --profile is used only for compression" << std::endl;
     return 1;
   }
+  if (decode && parse_result.count("no-refine")) {
+    std::cerr << "The option --no-refine is used only for compression" << std::endl;
+    return 1;
+  }
 
   // if file exists already, ask the user to confirm overwriting
   if (std::filesystem::exists(output_filename) && !parse_result.count("yes")) {
@@ -296,23 +320,20 @@ int main(int argc, char** argv) {
 
     if (encode) {
       if (parse_result.count("profile")) {
-        std::string profile_str = parse_result["profile"].as<std::string>();
-        // check if it is a file or a string
-        if (std::filesystem::exists(profile_str)) {
-          std::ifstream file(profile_str);
-          std::string profile;
-          file >> profile;
-          converter.addProfile(profile);
-        } else {
-          converter.addProfile(profile_str);
-        }
+        converter.addProfile(parse_result["profile"].as<std::string>());  // a string or a file
         auto profile_resolutions = converter.getProfile();
         std::cout << "\nApplied profile resolutions: \n";
         for (const auto& [field, resolution] : profile_resolutions) {
           std::cout << "  " << field << ": " << resolution << std::endl;
         }
       }
-      converter.encodePointClouds(output_filename, resolution, mcap_writer_compression);
+      if (viz_lossy) {
+        std::cout << "\nViz-lossy preprocessing: drop NaN, voxel-dedupe at " << resolution
+                  << " m, quantize FLOAT64 to 1us\n";
+      }
+      converter.setEncodingVersion(parse_result["encoding-version"].as<int>());
+      converter.setRefineResolutions(parse_result.count("no-refine") == 0);
+      converter.encodePointClouds(output_filename, resolution, mcap_writer_compression, viz_lossy);
     }
     if (decode) {
       converter.decodePointClouds(output_filename, mcap_writer_compression);
