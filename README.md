@@ -1,3 +1,28 @@
+## cloudini (humble) - 1.4.0-1
+
+The packages in the `cloudini` repository were released into the `humble` distro by running `/usr/bin/bloom-release -y --no-web -r humble -t humble cloudini` on `Mon, 28 Sep 2026 20:41:15 -0000`
+
+These packages were released:
+- `cloudini_lib`
+- `cloudini_ros`
+
+Version of package(s) in repository `cloudini`:
+
+- upstream repository: https://github.com/facontidavide/cloudini.git
+- release repository: https://github.com/facontidavide/cloudini-release.git
+- rosdistro version: `1.3.0-1`
+- old version: `1.3.0-1`
+- new version: `1.4.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.3`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## cloudini (lyrical) - 1.3.0-1
 
 The packages in the `cloudini` repository were released into the `lyrical` distro by running `/usr/bin/bloom-release --rosdistro lyrical cloudini -y` on `Sun, 20 Sep 2026 10:41:35 -0000`
