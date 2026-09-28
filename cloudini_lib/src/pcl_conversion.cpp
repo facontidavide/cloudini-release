@@ -167,11 +167,10 @@ EncodingInfo ConvertToEncodingInfo(const pcl::PCLPointCloud2& cloud, double reso
         break;
     }
 
-    // If the field is a FLOAT32 and has a resolution, set it
-    if (point_field.type == FieldType::FLOAT32 && resolution_XYZ > 0.0) {
-      point_field.resolution = resolution_XYZ;
-    } else {
-      point_field.resolution = std::nullopt;
+    // If the field is a FLOAT32 (but not a packed color like "rgb") and has a resolution, set it
+    point_field.resolution = std::nullopt;
+    if (resolution_XYZ > 0.0) {
+      point_field.resolution = defaultFieldResolution(point_field, static_cast<float>(resolution_XYZ));
     }
 
     info.fields.push_back(point_field);
@@ -213,8 +212,9 @@ size_t PCLPointCloudEncode(
     const pcl::PCLPointCloud2& cloud, std::vector<uint8_t>& serialized_cloud, double resolution_XYZ) {
   // get the encoding info
   EncodingInfo info = ConvertToEncodingInfo(cloud, resolution_XYZ);
-  PointcloudEncoder encoder(info);
   ConstBufferView data_view(cloud.data.data(), cloud.data.size());
+  RefineResolutionsToData(info, data_view);
+  PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
 
@@ -234,8 +234,9 @@ size_t PCLPointCloudEncode(
       field.type = pcd_fields_map.at(field.name);
     }
   }
-  PointcloudEncoder encoder(info);
   ConstBufferView data_view(cloud.data.data(), cloud.data.size());
+  RefineResolutionsToData(info, data_view);
+  PointcloudEncoder encoder(info);
   return encoder.encode(data_view, serialized_cloud);
 }
 
