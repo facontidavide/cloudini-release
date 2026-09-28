@@ -1,0 +1,12 @@
+Source: ros-lyrical-cloudini-lib
+Section: misc
+Priority: optional
+Maintainer: "Davide Faconti" <davide.faconti@gmail.com>
+Build-Depends: debhelper (>= 9.0.0), liblz4-dev, libpcl-dev, libzstd-dev, lz4, ros-lyrical-ament-cmake, ros-lyrical-ament-cmake-gtest <!nocheck>, ros-lyrical-ros-workspace
+Homepage: https://index.ros.org/p/cloudini_lib/#lyrical
+Standards-Version: 3.9.2
+
+Package: ros-lyrical-cloudini-lib
+Architecture: any
+Depends: ${shlibs:Depends}, ${misc:Depends}, libpcl-common1.15, libpcl-dev, libpcl-io1.15, ros-lyrical-ros-workspace
+Description: Main library of Cloudini, the pointcloud compression library
