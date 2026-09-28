@@ -2,6 +2,112 @@
 Changelog for package cloudini_ros
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
+1.4.0 (2026-09-28)
+------------------
+* feat: V6 wire format, now the default (`#150 <https://github.com/facontidavide/cloudini/issues/150>`_)
+
+  * The topic converter and the point_cloud_transport plugin write V6 and refine the
+    resolutions to the data by default. Subscribers on cloudini 1.3.1 or earlier cannot
+    decode V6: set ``encoding_version:=5`` (topic converter) or
+    ``cloudini_encoding_version: 5`` (plugin) for them.
+  * One encoder per topic (``PointcloudEncoderCache``), so V6 reuses its per-chunk
+    choices between clouds.
+  * The plugin validates ``cloudini_encoding_version`` (point_cloud_transport ignores the
+    parameter's range) and no longer zero-fills a raw-sized buffer per cloud.
+* fix: keep packed rgb/rgba FLOAT32 fields lossless (`#135 <https://github.com/facontidavide/cloudini/issues/135>`_) (`#146 <https://github.com/facontidavide/cloudini/issues/146>`_)
+  Some ROS drivers pack RGB(A) as uint32 bits reinterpreted into a FLOAT32
+  field named "rgb"/"rgba". Every path that assigned a default resolution
+  to FLOAT32 fields quantized these bits, destroying the colors.
+  Add Cloudini::isPackedColorField() / defaultFieldResolution() in
+  basic_types.hpp and use them in applyResolutionProfile, the PCL
+  ConvertToEncodingInfo, the WASM encode helpers and the ROS
+  ConvertToEncodingInfo. An explicit resolution profile entry still wins.
+  Decoding needs no change: resolution is stored in the header.
+  Claude-Session: https://claude.ai/code/session_01EAorWbhzp56yxAVUF7M3Dd
+  Co-authored-by: Claude <noreply@anthropic.com>
+* Contributors: Davide Faconti
+
+1.3.1 (2026-09-20)
+------------------
+* No changes; released together with cloudini_lib 1.3.1
+
+1.3.0 (2026-09-20)
+------------------
+* Fix license tags in package.xml
+  According to ros_license_toolkit[^1] license tags should be in SPDX
+  list of licenses. In case of claudini_ros, the license version was
+  missing and in case of claudini_lib, the license name was not "exact".
+  This commit changes the license tags to use SPDX license identifiers.
+  Note that it doesn't fix the failures reported in claudini_lib in the
+  output below:
+  [cloudini_ros]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache.
+  LicensesInCodeCheck
+  WARNING For the following files, please change the License Tag in the package file to SPDX format:
+  'include/cloudini_plugin/cloudini_publisher_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_plugin/cloudini_subscriber_plugin.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/cloudini_subscriber_pcl.hpp' is of Apache-2.0 but its Tag is Apache.
+  'include/cloudini_ros/conversion_utils.hpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_publisher_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_pcl.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/cloudini_subscriber_plugin.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/conversion_utils.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/plugin_manifest.cpp' is of Apache-2.0 but its Tag is Apache.
+  'src/topic_converter.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/draco_helper.hpp' is of Apache-2.0 but its Tag is Apache.
+  'test/rosbag_benchmark.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_cloudini_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_direct_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_publisher.cpp' is of Apache-2.0 but its Tag is Apache.
+  'test/test_plugin_subscriber.cpp' is of Apache-2.0 but its Tag is Apache.
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  --------------------
+  [cloudini_lib]
+  git hash of (/home/src/github.com/facontidavide/cloudini): d202e5255d12519ff1f3db1dac4df3ca0e550ee7
+  SchemaCheck
+  SUCCESS Detected package.xml version 3, validation of scheme successful.
+  LicenseTagExistsCheck
+  SUCCESS Found licenses ['Apache 2.0']
+  LicenseTagIsInSpdxListCheck
+  WARNING Licenses ['Apache 2.0'] are not in SPDX list of licenses. Make sure to exactly match one of https://spdx.org/licenses/.
+  LicenseTextExistsCheck
+  WARNING Since they are not in the SPDX list, we can not check if these tags have the correct license text:
+  'Apache 2.0': License text file '../LICENSE' is of license Apache-2.0 but tag is Apache 2.0.
+  LicensesInCodeCheck
+  FAILURE
+  The following files contain licenses that are not covered by any license tag:
+  'benchmarks/pcd_benchmark.cpp': ['MIT']
+  'cmake/CPM.cmake': ['MIT']
+  'include/cloudini_lib/ros_message_definitions.hpp': ['BSD-3-Clause']
+  'include/cloudini_lib/contrib/ankerl/stl.h': ['MIT']
+  'include/cloudini_lib/contrib/ankerl/unordered_dense.h': ['MIT']
+  LicenseFilesReferencedCheck
+  SUCCESS All license declaration are referenced by a tag.
+  [^1]: https://github.com/boschresearch/ros_license_toolkit
+* Contributors: Michal Sojka
+
+1.2.2 (2026-06-04)
+------------------
+* build: synchronized version bump with cloudini_lib (MSVC support; no functional changes here)
+
+1.2.1 (2026-05-20)
+------------------
+* ci(rolling): build point_cloud_interfaces from source via vcstool until the apt-sync drop is resolved
+
+1.2.0 (2026-05-05)
+------------------
+
 1.1.0 (2026-04-20)
 ------------------
 * feat(gorilla): Gorilla bit-packed XOR for FLOAT64 lossless (backward compatible) (`#93 <https://github.com/facontidavide/cloudini/issues/93>`_)
