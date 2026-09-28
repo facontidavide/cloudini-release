@@ -1,3 +1,28 @@
+## cloudini (kilted) - 1.4.0-1
+
+The packages in the `cloudini` repository were released into the `kilted` distro by running `/usr/bin/bloom-release --rosdistro kilted --track kilted cloudini` on `Mon, 28 Sep 2026 20:58:59 -0000`
+
+These packages were released:
+- `cloudini_lib`
+- `cloudini_ros`
+
+Version of package(s) in repository `cloudini`:
+
+- upstream repository: https://github.com/facontidavide/cloudini.git
+- release repository: https://github.com/facontidavide/cloudini-release.git
+- rosdistro version: `1.1.0-1`
+- old version: `1.1.0-1`
+- new version: `1.4.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.3`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## cloudini (lyrical) - 1.4.0-1
 
 The packages in the `cloudini` repository were released into the `lyrical` distro by running `/usr/bin/bloom-release -y --no-web -r lyrical -t lyrical cloudini` on `Mon, 28 Sep 2026 20:45:03 -0000`
