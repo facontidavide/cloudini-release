@@ -23,9 +23,11 @@
 
 #include <algorithm>
 #include <clocale>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cstring>
+#include <limits>
 #include <locale>
 #include <stdexcept>
 #include <string>
@@ -33,6 +35,7 @@
 
 #include "cloudini_lib/cloudini.hpp"
 #include "cloudini_lib/ros_message_definitions.hpp"  // second includer: see test_ros_msg.cpp
+#include "cloudini_lib/yaml_parser.hpp"
 
 namespace {
 
@@ -195,6 +198,31 @@ TEST(Cloudini, Header) {
   }
 }
 
+// The YAML header stores a resolution as text. libc++ (macOS, Emscripten) does not read a subnormal float
+// from a stream, which libstdc++ does: the header must still parse.
+TEST(Cloudini, HeaderSubnormalResolution) {
+  using namespace Cloudini;
+
+  EncodingInfo header;
+  header.width = 10;
+  header.height = 1;
+  header.point_step = sizeof(float) * 4;
+  header.fields.push_back({"x", 0, FieldType::FLOAT32, 1e-40F});
+  header.fields.push_back({"y", 4, FieldType::FLOAT32, std::numeric_limits<float>::denorm_min()});
+  header.fields.push_back({"z", 8, FieldType::FLOAT32, std::nextafter(std::numeric_limits<float>::min(), 0.0F)});
+  header.fields.push_back({"w", 12, FieldType::FLOAT32, std::numeric_limits<float>::min()});
+
+  std::vector<uint8_t> buffer;
+  EncodeHeader(header, buffer);
+  ConstBufferView input(buffer.data(), buffer.size());
+  const auto decoded_header = DecodeHeader(input);
+
+  ASSERT_EQ(decoded_header.fields.size(), header.fields.size());
+  for (size_t i = 0; i < header.fields.size(); ++i) {
+    ASSERT_EQ(decoded_header.fields[i].resolution, header.fields[i].resolution) << header.fields[i].name;
+  }
+}
+
 TEST(Cloudini, DefaultVersionAndExplicitV4RoundTrip) {
   using namespace Cloudini;
 
@@ -331,6 +359,23 @@ TEST(Cloudini, HeaderMissingYamlTerminator) {
 
   ConstBufferView input(buffer.data(), buffer.size());
   EXPECT_THROW(DecodeHeader(input), std::runtime_error);
+}
+
+// cldn_EncodePointcloudData (WebAssembly, the Python encoder) reads the EncodingInfo from YAML, with no
+// magic header to take the version from.
+TEST(Cloudini, YAMLRoundTripKeepsVersion) {
+  using namespace Cloudini;
+  for (uint8_t version : {uint8_t(5), uint8_t(6)}) {
+    EncodingInfo info;
+    info.version = version;
+    info.width = 10;
+    info.point_step = 4;
+    info.fields.push_back({"x", 0, FieldType::FLOAT32, 0.001F});
+    EXPECT_EQ(EncodingInfoFromYAML(EncodingInfoToYAML(info)).version, version);
+  }
+  EXPECT_EQ(YAML::parse("v: 200")["v"].as<uint8_t>(), 200);
+  EXPECT_EQ(YAML::parse("v: -5")["v"].as<int8_t>(), -5);
+  EXPECT_THROW(YAML::parse("v: 300")["v"].as<uint8_t>(), std::runtime_error);
 }
 
 // Regression tests for issue #123: the YAML header must be written and parsed
