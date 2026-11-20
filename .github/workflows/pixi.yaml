@@ -3,8 +3,10 @@ name: Pixi Package
 on:
   push:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   pull_request:
     branches: [ main ]
+    paths-ignore: ['**.md', '**.svg', '**.png', 'docs/**', 'LICENSE']
   workflow_dispatch:
 
 permissions:
@@ -20,7 +22,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: prefix-dev/setup-pixi@v0.10.2
+      - uses: prefix-dev/setup-pixi@v0.11.3
         with:
           pixi-version: v0.70.2
           run-install: false
