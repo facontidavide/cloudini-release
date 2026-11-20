@@ -1,3 +1,28 @@
+## cloudini (rolling) - 1.5.0-1
+
+The packages in the `cloudini` repository were released into the `rolling` distro by running `/usr/bin/bloom-release --rosdistro rolling --track rolling cloudini -y --no-web --override-release-repository-url https://github.com/facontidavide/cloudini-release.git` on `Fri, 20 Nov 2026 11:04:32 -0000`
+
+These packages were released:
+- `cloudini_lib`
+- `cloudini_ros`
+
+Version of package(s) in repository `cloudini`:
+
+- upstream repository: https://github.com/facontidavide/cloudini.git
+- release repository: unknown
+- rosdistro version: `null`
+- old version: `1.4.0-1`
+- new version: `1.5.0-1`
+
+Versions of tools used:
+
+- bloom version: `0.14.3`
+- catkin_pkg version: `1.1.0`
+- rosdep version: `0.26.0`
+- rosdistro version: `1.0.1`
+- vcstools version: `0.1.42`
+
+
 ## cloudini (lyrical) - 1.5.0-1
 
 The packages in the `cloudini` repository were released into the `lyrical` distro by running `/usr/bin/bloom-release --rosdistro lyrical --track lyrical cloudini -y --no-web` on `Fri, 20 Nov 2026 11:02:45 -0000`
